@@ -1,0 +1,71 @@
+
+Copy
+
+"""
+material_utils.py -- Material and shading functions for the Gym Prop Kit Generator.
+====================================================================================
+DIGM 131 - Week 6 | Author: Christian Wurapa
+ 
+This module handles creating and assigning Lambert shaders to objects.
+Keeping materials in a separate file means prop_utils.py stays focused
+on geometry, and this file stays focused on color/shading.
+ 
+Usage:
+    import material_utils as mats
+    shader = mats.create_material(name="metal_grey", color=(0.3, 0.3, 0.3))
+    mats.assign_material("dumbbell_#", shader)
+"""
+ 
+import maya.cmds as cmds
+ 
+ 
+def create_material(name, color=(0.5, 0.5, 0.5)):
+    """Create a Lambert shader with a given name and RGB color.
+ 
+    Lambert is Maya's simplest shader — flat, no specularity.
+    Good for a first pass before adding more complex materials later.
+ 
+    Args:
+        name (str): What to call the shader in the Hypershade.
+        color (tuple): (R, G, B) values, each between 0.0 and 1.0.
+                       Default is a neutral mid-grey (0.5, 0.5, 0.5).
+ 
+    Returns:
+        str: The name of the created Lambert shader node.
+    """
+    # Create the Lambert shader node
+    shader = cmds.shadingNode("lambert", asShader=True, name=name)
+ 
+    # Set its color using the RGB tuple we passed in
+    cmds.setAttr(shader + ".color", color[0], color[1], color[2], type="double3")
+ 
+    return shader
+ 
+ 
+def assign_material(obj_name, shader_name):
+    """Assign an existing shader to a Maya object.
+ 
+    This connects the shader to a shading group and applies it
+    to the object so it shows up in the viewport.
+ 
+    Args:
+        obj_name (str): The name of the Maya object to apply the material to.
+        shader_name (str): The name of the shader node to apply.
+ 
+    Returns:
+        None
+    """
+    # Create a shading group (required by Maya to apply shaders)
+    shading_group = cmds.sets(
+        renderable=True,
+        noSurfaceShader=True,
+        empty=True,
+        name=shader_name + "_SG"
+    )
+ 
+    # Connect the shader to the shading group
+    cmds.connectAttr(shader_name + ".outColor", shading_group + ".surfaceShader", force=True)
+ 
+    # Assign the shading group to the object
+    cmds.sets(obj_name, edit=True, forceElement=shading_group)
+ 
