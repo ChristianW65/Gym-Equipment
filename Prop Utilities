@@ -1,0 +1,324 @@
+"""
+prop_utils.py -- Prop creation functions for the Gym Prop Kit Generator.
+=========================================================================
+DIGM 131 - Week 6 | Author: Christian Wurapa
+ 
+This module contains all geometry builder functions for gym equipment props.
+Each function creates a single prop and returns its name (or group name)
+so that main.py can reference, move, or modify it later.
+ 
+Usage:
+    import prop_utils as props
+    props.create_dumbbell(handle_length=0.4, head_radius=0.15)
+    props.create_barbell(bar_length=1.8, plate_count=2)
+    props.create_bench(seat_width=0.5, seat_length=1.2)
+    props.create_squat_rack(height=2.2, width=1.2)
+"""
+ 
+import maya.cmds as cmds
+ 
+ 
+# ------------------------------------------------------------------
+# HELPER FUNCTIONS
+# Small, reusable building blocks that the main prop functions call.
+# Writing these once and reusing them keeps our code clean and DRY
+# (Don't Repeat Yourself).
+# ------------------------------------------------------------------
+ 
+def create_cylinder(radius, height, name):
+    """Create a basic cylinder with a given radius, height, and name.
+ 
+    This is a helper used by multiple prop functions so we don't
+    have to repeat the same polyCylinder call everywhere.
+ 
+    Args:
+        radius (float): The radius (half-width) of the cylinder.
+        height (float): The total height of the cylinder.
+        name (str): What to call the object in the Maya outliner.
+ 
+    Returns:
+        str: The name of the created cylinder transform node.
+    """
+    # polyCylinder returns a list: [transformNode, shapeNode]
+    # We grab index [0] to get just the transform (the object itself)
+    cyl = cmds.polyCylinder(
+        radius=radius,
+        height=height,
+        subdivisionsX=12,   # how smooth the circle is
+        name=name
+    )[0]
+    return cyl
+ 
+ 
+def create_leg(height, radius=0.04, position=(0, 0, 0)):
+    """Create a single thin cylindrical leg for benches or racks.
+ 
+    Args:
+        height (float): How tall the leg should be.
+        radius (float): How thick the leg is. Default 0.04 (thin).
+        position (tuple): (x, y, z) where the base of the leg sits.
+ 
+    Returns:
+        str: The name of the created leg transform node.
+    """
+    leg = create_cylinder(radius=radius, height=height, name="leg_#")
+ 
+    # Move leg so its base sits on the ground (y=0)
+    # By default Maya centers objects at origin, so we lift it by half its height
+    cmds.move(
+        position[0],
+        position[1] + height / 2.0,
+        position[2],
+        leg
+    )
+    return leg
+ 
+ 
+# ------------------------------------------------------------------
+# PROP FUNCTIONS
+# Each function builds one complete gym prop.
+# ------------------------------------------------------------------
+ 
+def create_dumbbell(handle_length=0.4, head_radius=0.15, position=(0, 0, 0)):
+    """Create a dumbbell: a short handle cylinder with a sphere on each end.
+ 
+    The dumbbell is built from 3 pieces:
+        - 1 cylinder for the handle (the grip in the middle)
+        - 1 sphere on the left end
+        - 1 sphere on the right end
+    All 3 are grouped together so they move as one object.
+ 
+    Args:
+        handle_length (float): Length of the middle grip bar. Default 0.4.
+        head_radius (float): Radius of the weight spheres on each end. Default 0.15.
+        position (tuple): (x, y, z) center position of the dumbbell. Default origin.
+ 
+    Returns:
+        str: Name of the dumbbell group node containing all 3 pieces.
+    """
+    handle_radius = 0.04   # thin handle, fixed width
+ 
+    # --- Handle (the grip bar in the middle) ---
+    handle = create_cylinder(
+        radius=handle_radius,
+        height=handle_length,
+        name="dumbbell_handle_#"
+    )
+    # Rotate 90 degrees so the cylinder lies on its side (along X axis)
+    cmds.rotate(0, 0, 90, handle)
+ 
+    # --- Left weight head (sphere) ---
+    left_head = cmds.polySphere(radius=head_radius, name="dumbbell_head_L_#")[0]
+    # Position it at the left end of the handle
+    cmds.move(-(handle_length / 2.0 + head_radius * 0.5), 0, 0, left_head)
+ 
+    # --- Right weight head (sphere) ---
+    right_head = cmds.polySphere(radius=head_radius, name="dumbbell_head_R_#")[0]
+    # Position it at the right end of the handle
+    cmds.move((handle_length / 2.0 + head_radius * 0.5), 0, 0, right_head)
+ 
+    # --- Group all 3 pieces together ---
+    dumbbell_grp = cmds.group(handle, left_head, right_head, name="dumbbell_#")
+ 
+    # --- Move the whole group to the requested position ---
+    cmds.move(position[0], position[1], position[2], dumbbell_grp)
+ 
+    return dumbbell_grp
+ 
+ 
+def create_barbell(bar_length=1.8, plate_count=2, plate_radius=0.35, position=(0, 0, 0)):
+    """Create a barbell: a long horizontal bar with stacked plates on each end.
+ 
+    The barbell is built from:
+        - 1 long cylinder for the bar
+        - plate_count flat cylinders stacked on the left end
+        - plate_count flat cylinders stacked on the right end
+    All pieces are grouped together.
+ 
+    Args:
+        bar_length (float): Total length of the bar. Default 1.8.
+        plate_count (int): Number of weight plates on each side. Default 2.
+        plate_radius (float): Radius of each weight plate. Default 0.35.
+        position (tuple): (x, y, z) center of the barbell. Default origin.
+ 
+    Returns:
+        str: Name of the barbell group node containing all pieces.
+    """
+    bar_radius = 0.025      # thin bar
+    plate_thickness = 0.05  # how thick each plate is (flat disc)
+    parts = []              # we'll collect all pieces here before grouping
+ 
+    # --- The main bar ---
+    bar = create_cylinder(radius=bar_radius, height=bar_length, name="barbell_bar_#")
+    cmds.rotate(0, 0, 90, bar)   # lay it on its side along X axis
+    parts.append(bar)
+ 
+    # --- Plates on the LEFT side ---
+    # Stack plates outward from the center, each one offset a bit further
+    for i in range(plate_count):
+        plate = create_cylinder(
+            radius=plate_radius,
+            height=plate_thickness,
+            name="barbell_plate_L_#"
+        )
+        cmds.rotate(0, 0, 90, plate)  # lay flat along X axis
+ 
+        # Each plate is offset further out along the negative X axis
+        x_offset = -(bar_length / 2.0 - 0.1) - (i * (plate_thickness + 0.01))
+        cmds.move(x_offset, 0, 0, plate)
+        parts.append(plate)
+ 
+    # --- Plates on the RIGHT side ---
+    for i in range(plate_count):
+        plate = create_cylinder(
+            radius=plate_radius,
+            height=plate_thickness,
+            name="barbell_plate_R_#"
+        )
+        cmds.rotate(0, 0, 90, plate)
+ 
+        # Each plate is offset further out along the positive X axis
+        x_offset = (bar_length / 2.0 - 0.1) + (i * (plate_thickness + 0.01))
+        cmds.move(x_offset, 0, 0, plate)
+        parts.append(plate)
+ 
+    # --- Group everything ---
+    barbell_grp = cmds.group(*parts, name="barbell_#")
+    cmds.move(position[0], position[1], position[2], barbell_grp)
+ 
+    return barbell_grp
+ 
+ 
+def create_bench(seat_width=0.5, seat_length=1.2, leg_height=0.4, position=(0, 0, 0)):
+    """Create a weight bench: a flat rectangular seat pad sitting on 4 legs.
+ 
+    The bench is built from:
+        - 1 flat box for the seat pad
+        - 4 thin cylinder legs at each corner
+    All pieces are grouped together.
+ 
+    Args:
+        seat_width (float): Width of the seat along the Z axis. Default 0.5.
+        seat_length (float): Length of the seat along the X axis. Default 1.2.
+        leg_height (float): Height of the legs (how tall bench sits). Default 0.4.
+        position (tuple): (x, y, z) base center of the bench. Default origin.
+ 
+    Returns:
+        str: Name of the bench group node containing all pieces.
+    """
+    seat_thickness = 0.08   # how thick the pad is
+    parts = []
+ 
+    # --- Seat pad (a flat box) ---
+    seat = cmds.polyCube(
+        width=seat_length,
+        height=seat_thickness,
+        depth=seat_width,
+        name="bench_seat_#"
+    )[0]
+    # Place seat on top of the legs
+    cmds.move(0, leg_height + seat_thickness / 2.0, 0, seat)
+    parts.append(seat)
+ 
+    # --- 4 Legs at each corner of the seat ---
+    # Corner offsets: half the seat length/width inset slightly
+    x_offset = seat_length / 2.0 - 0.08
+    z_offset = seat_width / 2.0 - 0.06
+ 
+    corner_positions = [
+        ( x_offset, 0,  z_offset),   # front right
+        ( x_offset, 0, -z_offset),   # back right
+        (-x_offset, 0,  z_offset),   # front left
+        (-x_offset, 0, -z_offset),   # back left
+    ]
+ 
+    for pos in corner_positions:
+        leg = create_leg(height=leg_height, position=pos)
+        parts.append(leg)
+ 
+    # --- Group everything ---
+    bench_grp = cmds.group(*parts, name="bench_#")
+    cmds.move(position[0], position[1], position[2], bench_grp)
+ 
+    return bench_grp
+ 
+ 
+def create_squat_rack(height=2.2, width=1.2, position=(0, 0, 0)):
+    """Create a squat rack: two tall vertical uprights connected by bar-holder pegs.
+ 
+    The squat rack is built from:
+        - 2 tall vertical cylinder uprights (left and right)
+        - 2 short horizontal peg cylinders where the bar rests
+        - 1 horizontal crossbar connecting the uprights at the top
+    All pieces are grouped together.
+ 
+    Args:
+        height (float): How tall the upright poles are. Default 2.2.
+        width (float): Distance between the two uprights. Default 1.2.
+        position (tuple): (x, y, z) base center of the rack. Default origin.
+ 
+    Returns:
+        str: Name of the squat rack group node containing all pieces.
+    """
+    upright_radius = 0.05   # thickness of the vertical poles
+    peg_radius = 0.03        # thickness of the bar-holder pegs
+    peg_length = 0.2         # how far the pegs stick out
+    peg_height = height * 0.7  # pegs sit at 70% of the rack height
+    parts = []
+ 
+    # --- Left upright ---
+    left_upright = create_cylinder(
+        radius=upright_radius,
+        height=height,
+        name="rack_upright_L_#"
+    )
+    # Position left upright: lift it so base is on ground, offset left
+    cmds.move(-width / 2.0, height / 2.0, 0, left_upright)
+    parts.append(left_upright)
+ 
+    # --- Right upright ---
+    right_upright = create_cylinder(
+        radius=upright_radius,
+        height=height,
+        name="rack_upright_R_#"
+    )
+    cmds.move(width / 2.0, height / 2.0, 0, right_upright)
+    parts.append(right_upright)
+ 
+    # --- Left bar-holder peg ---
+    left_peg = create_cylinder(
+        radius=peg_radius,
+        height=peg_length,
+        name="rack_peg_L_#"
+    )
+    # Rotate peg to point inward (along X axis)
+    cmds.rotate(0, 0, 90, left_peg)
+    cmds.move(-width / 2.0 + peg_length / 2.0, peg_height, 0, left_peg)
+    parts.append(left_peg)
+ 
+    # --- Right bar-holder peg ---
+    right_peg = create_cylinder(
+        radius=peg_radius,
+        height=peg_length,
+        name="rack_peg_R_#"
+    )
+    cmds.rotate(0, 0, 90, right_peg)
+    cmds.move(width / 2.0 - peg_length / 2.0, peg_height, 0, right_peg)
+    parts.append(right_peg)
+ 
+    # --- Top crossbar connecting the two uprights ---
+    crossbar = create_cylinder(
+        radius=peg_radius,
+        height=width,
+        name="rack_crossbar_#"
+    )
+    cmds.rotate(0, 0, 90, crossbar)
+    cmds.move(0, height - 0.1, 0, crossbar)
+    parts.append(crossbar)
+ 
+    # --- Group everything ---
+    rack_grp = cmds.group(*parts, name="squat_rack_#")
+    cmds.move(position[0], position[1], position[2], rack_grp)
+ 
+    return rack_grp
+ 
