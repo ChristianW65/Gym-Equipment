@@ -1,0 +1,113 @@
+"""
+main.py -- Entry point and self-test for the Gym Prop Kit Generator.
+=====================================================================
+DIGM 131 - Week 6 | Author: Christian Wurapa
+ 
+This file is the entry point for the tool. It imports the other
+modules (prop_utils and material_utils) and runs a self-test
+that builds one of every prop in the Maya viewport.
+ 
+How to run:
+    1. First run prop_utils.py in the Script Editor (Tab 1)
+    2. Then run material_utils.py in the Script Editor (Tab 2)
+    3. Then run this file in the Script Editor (Tab 3)
+    OR paste everything into one tab in this order.
+"""
+ 
+import os
+import sys
+import maya.cmds as cmds
+ 
+# ------------------------------------------------------------------
+# sys.path block
+# This tells Maya WHERE to find your other .py files.
+# Without this, "import prop_utils" would fail because Maya
+# wouldn't know where to look.
+# ------------------------------------------------------------------
+try:
+    # If running from a saved .py file, __file__ gives us the path
+    _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    # If pasting into the Script Editor, __file__ doesn't exist
+    # so we fall back to the Maya project root directory
+    _THIS_DIR = cmds.workspace(query=True, rootDirectory=True)
+ 
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
+ 
+# ------------------------------------------------------------------
+# Imports
+# Now that sys.path is set, Maya can find our modules
+# ------------------------------------------------------------------
+import prop_utils as props
+import material_utils as mats
+ 
+# ------------------------------------------------------------------
+# Self-test
+# This block only runs when you execute main.py directly.
+# It creates one of every prop, spaced apart so they don't overlap,
+# then fits the camera to show everything.
+# ------------------------------------------------------------------
+if __name__ == "__main__":
+ 
+    # Clear the scene so we start fresh every time
+    cmds.file(new=True, force=True)
+ 
+    print("=" * 50)
+    print("Gym Prop Kit Generator -- Self Test")
+    print("=" * 50)
+ 
+    # --- Create one of each prop, spaced apart on the X axis ---
+ 
+    # Dumbbell at the origin
+    dumbbell = props.create_dumbbell(
+        handle_length=0.4,
+        head_radius=0.15,
+        position=(0, 1, 0)      # y=1 lifts it off the ground slightly
+    )
+    print(f"Created dumbbell:   {dumbbell}")
+ 
+    # Barbell to the right of the dumbbell
+    barbell = props.create_barbell(
+        bar_length=1.8,
+        plate_count=2,
+        plate_radius=0.35,
+        position=(4, 0.5, 0)    # y=0.5 lifts it to rest-on-rack height
+    )
+    print(f"Created barbell:    {barbell}")
+ 
+    # Bench further right
+    bench = props.create_bench(
+        seat_width=0.5,
+        seat_length=1.2,
+        leg_height=0.4,
+        position=(8, 0, 0)
+    )
+    print(f"Created bench:      {bench}")
+ 
+    # Squat rack at the far right
+    rack = props.create_squat_rack(
+        height=2.2,
+        width=1.2,
+        position=(13, 0, 0)
+    )
+    print(f"Created squat rack: {rack}")
+ 
+    # --- Apply simple materials so props are easy to tell apart ---
+ 
+    metal_shader = mats.create_material("metal_grey", color=(0.35, 0.35, 0.38))
+    rubber_shader = mats.create_material("rubber_black", color=(0.1, 0.1, 0.1))
+    pad_shader = mats.create_material("pad_red", color=(0.6, 0.1, 0.1))
+ 
+    mats.assign_material(dumbbell, metal_shader)
+    mats.assign_material(barbell, metal_shader)
+    mats.assign_material(bench, pad_shader)
+    mats.assign_material(rack, rubber_shader)
+ 
+    # --- Fit the camera to show all objects ---
+    cmds.viewFit(allObjects=True)
+ 
+    print("=" * 50)
+    print("Self-test complete! Check the viewport.")
+    print("=" * 50)
+ 
