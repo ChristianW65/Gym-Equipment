@@ -1,0 +1,372 @@
+# ui.py -- UI window for the Gym Prop Kit Generator
+# DIGM 131 - Week 6 | Author: Christian Wurapa
+
+import json
+import maya.cmds as cmds
+
+from prop_utils import (
+    create_dumbbell,
+    create_barbell,
+    create_bench,
+    create_squat_rack,
+)
+from material_utils import create_material, assign_material
+
+
+# ------------------------------------------------------------------
+# JSON CONFIG
+# All prop parameters are defined here. To add a new prop or tweak
+# a slider range, edit this dictionary -- no UI code needs to change.
+# ------------------------------------------------------------------
+
+CONFIG_JSON = """
+{
+    "props": [
+        {
+            "name": "Dumbbell",
+            "color_key": "metal",
+            "position": [0, 1, 0],
+            "fields": [
+                {
+                    "label": "Handle Length",
+                    "key": "handle_length",
+                    "type": "float",
+                    "min": 0.1,
+                    "max": 2.0,
+                    "default": 0.4
+                },
+                {
+                    "label": "Head Radius",
+                    "key": "head_radius",
+                    "type": "float",
+                    "min": 0.05,
+                    "max": 0.5,
+                    "default": 0.15
+                }
+            ]
+        },
+        {
+            "name": "Barbell",
+            "color_key": "metal",
+            "position": [4, 0.5, 0],
+            "fields": [
+                {
+                    "label": "Bar Length",
+                    "key": "bar_length",
+                    "type": "float",
+                    "min": 0.5,
+                    "max": 4.0,
+                    "default": 1.8
+                },
+                {
+                    "label": "Plates Per Side",
+                    "key": "plate_count",
+                    "type": "int",
+                    "min": 1,
+                    "max": 6,
+                    "default": 2
+                }
+            ]
+        },
+        {
+            "name": "Bench",
+            "color_key": "pad",
+            "position": [8, 0, 0],
+            "fields": [
+                {
+                    "label": "Seat Width",
+                    "key": "seat_width",
+                    "type": "float",
+                    "min": 0.2,
+                    "max": 1.5,
+                    "default": 0.5
+                },
+                {
+                    "label": "Seat Length",
+                    "key": "seat_length",
+                    "type": "float",
+                    "min": 0.5,
+                    "max": 3.0,
+                    "default": 1.2
+                },
+                {
+                    "label": "Leg Height",
+                    "key": "leg_height",
+                    "type": "float",
+                    "min": 0.1,
+                    "max": 1.5,
+                    "default": 0.4
+                }
+            ]
+        },
+        {
+            "name": "Squat Rack",
+            "color_key": "rubber",
+            "position": [13, 0, 0],
+            "fields": [
+                {
+                    "label": "Rack Height",
+                    "key": "height",
+                    "type": "float",
+                    "min": 1.0,
+                    "max": 4.0,
+                    "default": 2.2
+                },
+                {
+                    "label": "Rack Width",
+                    "key": "width",
+                    "type": "float",
+                    "min": 0.5,
+                    "max": 3.0,
+                    "default": 1.2
+                }
+            ]
+        }
+    ],
+    "materials": [
+        {
+            "label": "Metal (Dumbbell / Barbell)",
+            "key": "metal",
+            "default_color": [0.35, 0.35, 0.38]
+        },
+        {
+            "label": "Pad (Bench)",
+            "key": "pad",
+            "default_color": [0.6, 0.1, 0.1]
+        },
+        {
+            "label": "Rubber (Squat Rack)",
+            "key": "rubber",
+            "default_color": [0.1, 0.1, 0.1]
+        }
+    ]
+}
+"""
+
+# Maps each prop name from the config to its builder function
+PROP_BUILDERS = {
+    "Dumbbell":   create_dumbbell,
+    "Barbell":    create_barbell,
+    "Bench":      create_bench,
+    "Squat Rack": create_squat_rack,
+}
+
+
+def build_props(config, ui_values, material_colors):
+    """Read config and UI values, build every prop, and apply materials.
+
+    This function is fully data-driven: it loops over the config rather
+    than hardcoding each prop, so adding a new prop to CONFIG_JSON
+    automatically includes it in the build without changing this function.
+
+    Args:
+        config (dict): Parsed JSON config containing props and materials.
+        ui_values (dict): Field values keyed by "PropName.field_key".
+        material_colors (dict): RGB color tuples keyed by material key.
+
+    Returns:
+        None
+    """
+    try:
+        cmds.file(new=True, force=True)
+
+        shaders = {}
+        for mat in config["materials"]:
+            color = material_colors[mat["key"]]
+            shaders[mat["key"]] = create_material(mat["key"], color=color)
+
+        for prop in config["props"]:
+            name = prop["name"]
+            builder = PROP_BUILDERS.get(name)
+
+            if builder is None:
+                print(f"Warning: no builder found for prop '{name}', skipping.")
+                continue
+
+            kwargs = {}
+            for field in prop["fields"]:
+                ui_key = f"{name}.{field['key']}"
+                kwargs[field["key"]] = ui_values[ui_key]
+
+            position = tuple(prop["position"])
+            prop_obj = builder(position=position, **kwargs)
+            color_key = prop.get("color_key", "metal")
+            assign_material(prop_obj, shaders[color_key])
+
+        cmds.viewFit(allObjects=True)
+
+        cmds.confirmDialog(
+            title="Success",
+            message="Gym props built successfully!",
+            button=["OK"]
+        )
+
+    except ValueError as e:
+        cmds.confirmDialog(
+            title="Input Error",
+            message=f"Invalid value: {e}",
+            button=["OK"]
+        )
+    except RuntimeError as e:
+        cmds.confirmDialog(
+            title="Maya Error",
+            message=f"Maya error: {e}",
+            button=["OK"]
+        )
+    except Exception as e:
+        cmds.confirmDialog(
+            title="Unexpected Error",
+            message=f"Something went wrong: {e}",
+            button=["OK"]
+        )
+
+
+def launch_ui():
+    """Build and display the Gym Prop Kit Generator UI window.
+
+    Reads CONFIG_JSON to dynamically generate sliders and text fields
+    for every prop and field defined in the config. Adding a new prop
+    to the config automatically adds its controls to the UI.
+
+    Returns:
+        None
+    """
+    config = json.loads(CONFIG_JSON)
+    window_id = "gymPropKitUI"
+
+    if cmds.window(window_id, exists=True):
+        cmds.deleteUI(window_id)
+
+    win = cmds.window(
+        window_id,
+        title="Gym Prop Kit Generator",
+        widthHeight=(420, 700),
+        sizeable=False
+    )
+
+    ui_fields = {}
+
+    material_colors = {
+        mat["key"]: list(mat["default_color"])
+        for mat in config["materials"]
+    }
+
+    color_buttons = {}
+
+    cmds.scrollLayout(verticalScrollBarThickness=8)
+    cmds.columnLayout(adjustableColumn=True, rowSpacing=6, columnOffset=("both", 10))
+
+    for prop in config["props"]:
+        prop_name = prop["name"]
+
+        cmds.separator(height=10, style="none")
+        cmds.text(label=prop_name.upper(), align="left", font="boldLabelFont")
+        cmds.separator(height=4, style="in")
+
+        for field in prop["fields"]:
+            ui_key = f"{prop_name}.{field['key']}"
+            cmds.text(label=field["label"], align="left")
+
+            if field["type"] == "float":
+                field_ctrl = cmds.floatField(
+                    value=field["default"],
+                    minValue=field["min"],
+                    maxValue=field["max"],
+                    precision=2
+                )
+                slider_ctrl = cmds.floatSlider(
+                    min=field["min"],
+                    max=field["max"],
+                    value=field["default"],
+                    step=0.01
+                )
+            else:
+                field_ctrl = cmds.intField(
+                    value=field["default"],
+                    minValue=field["min"],
+                    maxValue=field["max"]
+                )
+                slider_ctrl = cmds.intSlider(
+                    min=field["min"],
+                    max=field["max"],
+                    value=field["default"],
+                    step=1
+                )
+
+            cmds.connectControl(field_ctrl, slider_ctrl)
+            cmds.connectControl(slider_ctrl, field_ctrl)
+            ui_fields[ui_key] = (field_ctrl, field["type"])
+
+    cmds.separator(height=10, style="none")
+    cmds.text(label="MATERIALS", align="left", font="boldLabelFont")
+    cmds.separator(height=4, style="in")
+
+    for mat in config["materials"]:
+        mat_key = mat["key"]
+        default = mat["default_color"]
+
+        def make_picker(key):
+            """Return a color-picker callback bound to a specific material key.
+
+            Args:
+                key (str): The material key to update when color is picked.
+
+            Returns:
+                function: A Maya command callback that opens the color dialog.
+            """
+            def pick_color(*args):
+                result = cmds.colorDialog()
+                if result:
+                    vals = cmds.colorDialog(query=True, rgbValue=True)
+                    material_colors[key][0] = vals[0]
+                    material_colors[key][1] = vals[1]
+                    material_colors[key][2] = vals[2]
+                    cmds.button(
+                        color_buttons[key],
+                        edit=True,
+                        backgroundColor=(vals[0], vals[1], vals[2])
+                    )
+            return pick_color
+
+        cmds.rowLayout(numberOfColumns=2, columnWidth2=(200, 200))
+        cmds.text(label=mat["label"])
+        btn = cmds.button(
+            label="Pick Color",
+            backgroundColor=(default[0], default[1], default[2]),
+            command=make_picker(mat_key)
+        )
+        color_buttons[mat_key] = btn
+        cmds.setParent("..")
+
+    cmds.separator(height=14, style="none")
+
+    def on_build(*args):
+        """Read all UI field values and pass them to build_props.
+
+        Returns:
+            None
+        """
+        ui_values = {}
+        for ui_key, (ctrl, field_type) in ui_fields.items():
+            if field_type == "float":
+                ui_values[ui_key] = cmds.floatField(ctrl, query=True, value=True)
+            else:
+                ui_values[ui_key] = cmds.intField(ctrl, query=True, value=True)
+
+        build_props(
+            config=config,
+            ui_values=ui_values,
+            material_colors={k: tuple(v) for k, v in material_colors.items()}
+        )
+
+    cmds.button(
+        label="BUILD GYM PROPS",
+        height=40,
+        backgroundColor=(0.2, 0.6, 0.2),
+        command=on_build
+    )
+
+    cmds.separator(height=10, style="none")
+    cmds.setParent("..")
+
+    cmds.showWindow(win)
