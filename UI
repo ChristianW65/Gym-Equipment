@@ -228,6 +228,10 @@ def launch_ui():
     for every prop and field defined in the config. Adding a new prop
     to the config automatically adds its controls to the UI.
 
+    Uses explicit changeCommand callbacks instead of connectControl to
+    avoid Maya attribute path resolution errors when the window is
+    reopened multiple times in the same session.
+
     Returns:
         None
     """
@@ -244,18 +248,22 @@ def launch_ui():
         sizeable=False
     )
 
+    # Stores references to every UI field, keyed by "PropName.field_key"
     ui_fields = {}
 
+    # Stores live color values per material key as mutable lists
     material_colors = {
         mat["key"]: list(mat["default_color"])
         for mat in config["materials"]
     }
 
+    # Stores references to color buttons so we can update their color
     color_buttons = {}
 
     cmds.scrollLayout(verticalScrollBarThickness=8)
     cmds.columnLayout(adjustableColumn=True, rowSpacing=6, columnOffset=("both", 10))
 
+    # ---- Dynamically build prop sections from config ----
     for prop in config["props"]:
         prop_name = prop["name"]
 
@@ -278,8 +286,19 @@ def launch_ui():
                     min=field["min"],
                     max=field["max"],
                     value=field["default"],
-                    step=0.01
+                    step=0.01,
+                    changeCommand=lambda x, f=field_ctrl: cmds.floatField(
+                        f, edit=True, value=x
+                    )
                 )
+                cmds.floatField(
+                    field_ctrl,
+                    edit=True,
+                    changeCommand=lambda x, s=slider_ctrl: cmds.floatSlider(
+                        s, edit=True, value=x
+                    )
+                )
+
             else:
                 field_ctrl = cmds.intField(
                     value=field["default"],
@@ -290,13 +309,22 @@ def launch_ui():
                     min=field["min"],
                     max=field["max"],
                     value=field["default"],
-                    step=1
+                    step=1,
+                    changeCommand=lambda x, f=field_ctrl: cmds.intField(
+                        f, edit=True, value=x
+                    )
+                )
+                cmds.intField(
+                    field_ctrl,
+                    edit=True,
+                    changeCommand=lambda x, s=slider_ctrl: cmds.intSlider(
+                        s, edit=True, value=x
+                    )
                 )
 
-            cmds.connectControl(field_ctrl, slider_ctrl)
-            cmds.connectControl(slider_ctrl, field_ctrl)
             ui_fields[ui_key] = (field_ctrl, field["type"])
 
+    # ---- Dynamically build material color pickers from config ----
     cmds.separator(height=10, style="none")
     cmds.text(label="MATERIALS", align="left", font="boldLabelFont")
     cmds.separator(height=4, style="in")
@@ -338,6 +366,7 @@ def launch_ui():
         color_buttons[mat_key] = btn
         cmds.setParent("..")
 
+    # ---- Build button ----
     cmds.separator(height=14, style="none")
 
     def on_build(*args):
