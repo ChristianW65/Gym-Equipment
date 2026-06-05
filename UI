@@ -43,11 +43,16 @@ CONFIG_JSON = """
                     "max": 0.5,
                     "default": 0.15
                 }
+            ],
+            "color_presets": [
+                {"label": "Steel",      "color": [0.35, 0.35, 0.38]},
+                {"label": "Gold",       "color": [0.8,  0.65, 0.2 ]},
+                {"label": "Gunmetal",   "color": [0.2,  0.2,  0.22]}
             ]
         },
         {
             "name": "Barbell",
-            "color_key": "metal",
+            "color_key": "barbell",
             "position": [4, 0.5, 0],
             "fields": [
                 {
@@ -66,6 +71,11 @@ CONFIG_JSON = """
                     "max": 6,
                     "default": 2
                 }
+            ],
+            "color_presets": [
+                {"label": "Chrome",     "color": [0.75, 0.75, 0.78]},
+                {"label": "Black Bar",  "color": [0.1,  0.1,  0.1 ]},
+                {"label": "Cerakote",   "color": [0.4,  0.25, 0.1 ]}
             ]
         },
         {
@@ -97,11 +107,16 @@ CONFIG_JSON = """
                     "max": 1.5,
                     "default": 0.4
                 }
+            ],
+            "color_presets": [
+                {"label": "Red Pad",    "color": [0.6,  0.1,  0.1 ]},
+                {"label": "Black Pad",  "color": [0.1,  0.1,  0.1 ]},
+                {"label": "Blue Pad",   "color": [0.1,  0.2,  0.6 ]}
             ]
         },
         {
             "name": "Squat Rack",
-            "color_key": "rubber",
+            "color_key": "rack",
             "position": [13, 0, 0],
             "fields": [
                 {
@@ -120,24 +135,12 @@ CONFIG_JSON = """
                     "max": 3.0,
                     "default": 1.2
                 }
+            ],
+            "color_presets": [
+                {"label": "Black",      "color": [0.1,  0.1,  0.1 ]},
+                {"label": "Red",        "color": [0.55, 0.05, 0.05]},
+                {"label": "Grey",       "color": [0.45, 0.45, 0.45]}
             ]
-        }
-    ],
-    "materials": [
-        {
-            "label": "Metal (Dumbbell / Barbell)",
-            "key": "metal",
-            "default_color": [0.35, 0.35, 0.38]
-        },
-        {
-            "label": "Pad (Bench)",
-            "key": "pad",
-            "default_color": [0.6, 0.1, 0.1]
-        },
-        {
-            "label": "Rubber (Squat Rack)",
-            "key": "rubber",
-            "default_color": [0.1, 0.1, 0.1]
         }
     ]
 }
@@ -162,7 +165,7 @@ def build_props(config, ui_values, material_colors):
     Args:
         config (dict): Parsed JSON config containing props and materials.
         ui_values (dict): Field values keyed by "PropName.field_key".
-        material_colors (dict): RGB color tuples keyed by material key.
+        material_colors (dict): RGB color tuples keyed by color_key.
 
     Returns:
         None
@@ -171,9 +174,11 @@ def build_props(config, ui_values, material_colors):
         cmds.file(new=True, force=True)
 
         shaders = {}
-        for mat in config["materials"]:
-            color = material_colors[mat["key"]]
-            shaders[mat["key"]] = create_material(mat["key"], color=color)
+        for prop in config["props"]:
+            key = prop["color_key"]
+            color = material_colors[key]
+            if key not in shaders:
+                shaders[key] = create_material(key, color=tuple(color))
 
         for prop in config["props"]:
             name = prop["name"]
@@ -190,8 +195,7 @@ def build_props(config, ui_values, material_colors):
 
             position = tuple(prop["position"])
             prop_obj = builder(position=position, **kwargs)
-            color_key = prop.get("color_key", "metal")
-            assign_material(prop_obj, shaders[color_key])
+            assign_material(prop_obj, shaders[prop["color_key"]])
 
         cmds.viewFit(allObjects=True)
 
@@ -224,9 +228,10 @@ def build_props(config, ui_values, material_colors):
 def launch_ui():
     """Build and display the Gym Prop Kit Generator UI window.
 
-    Reads CONFIG_JSON to dynamically generate sliders and text fields
-    for every prop and field defined in the config. Adding a new prop
-    to the config automatically adds its controls to the UI.
+    Reads CONFIG_JSON to dynamically generate sliders, text fields,
+    and color preset buttons for every prop defined in the config.
+    Each prop has 3 preset color buttons. The selected color is
+    highlighted and stored for use when building the scene.
 
     Uses explicit changeCommand callbacks instead of connectControl to
     avoid Maya attribute path resolution errors when the window is
@@ -244,33 +249,38 @@ def launch_ui():
     win = cmds.window(
         window_id,
         title="Gym Prop Kit Generator",
-        widthHeight=(420, 700),
+        widthHeight=(440, 740),
         sizeable=False
     )
 
     # Stores references to every UI field, keyed by "PropName.field_key"
     ui_fields = {}
 
-    # Stores live color values per material key as mutable lists
-    material_colors = {
-        mat["key"]: list(mat["default_color"])
-        for mat in config["materials"]
-    }
+    # Stores the currently selected color per color_key as a mutable list
+    # Initialised to the first preset of each prop that uses that key
+    material_colors = {}
+    for prop in config["props"]:
+        key = prop["color_key"]
+        if key not in material_colors:
+            material_colors[key] = list(prop["color_presets"][0]["color"])
 
-    # Stores references to color buttons so we can update their color
-    color_buttons = {}
+    # Stores all preset button references per color_key so we can
+    # highlight the active one and dim the others
+    preset_buttons = {}
 
     cmds.scrollLayout(verticalScrollBarThickness=8)
     cmds.columnLayout(adjustableColumn=True, rowSpacing=6, columnOffset=("both", 10))
 
-    # ---- Dynamically build prop sections from config ----
+    # ---- Dynamically build one section per prop ----
     for prop in config["props"]:
         prop_name = prop["name"]
+        color_key = prop["color_key"]
 
         cmds.separator(height=10, style="none")
         cmds.text(label=prop_name.upper(), align="left", font="boldLabelFont")
         cmds.separator(height=4, style="in")
 
+        # -- Sliders and fields --
         for field in prop["fields"]:
             ui_key = f"{prop_name}.{field['key']}"
             cmds.text(label=field["label"], align="left")
@@ -324,46 +334,57 @@ def launch_ui():
 
             ui_fields[ui_key] = (field_ctrl, field["type"])
 
-    # ---- Dynamically build material color pickers from config ----
-    cmds.separator(height=10, style="none")
-    cmds.text(label="MATERIALS", align="left", font="boldLabelFont")
-    cmds.separator(height=4, style="in")
-
-    for mat in config["materials"]:
-        mat_key = mat["key"]
-        default = mat["default_color"]
-
-        def make_picker(key):
-            """Return a color-picker callback bound to a specific material key.
-
-            Args:
-                key (str): The material key to update when color is picked.
-
-            Returns:
-                function: A Maya command callback that opens the color dialog.
-            """
-            def pick_color(*args):
-                result = cmds.colorDialog()
-                if result:
-                    vals = cmds.colorDialog(query=True, rgbValue=True)
-                    material_colors[key][0] = vals[0]
-                    material_colors[key][1] = vals[1]
-                    material_colors[key][2] = vals[2]
-                    cmds.button(
-                        color_buttons[key],
-                        edit=True,
-                        backgroundColor=(vals[0], vals[1], vals[2])
-                    )
-            return pick_color
-
-        cmds.rowLayout(numberOfColumns=2, columnWidth2=(200, 200))
-        cmds.text(label=mat["label"])
-        btn = cmds.button(
-            label="Pick Color",
-            backgroundColor=(default[0], default[1], default[2]),
-            command=make_picker(mat_key)
+        # -- Color preset buttons (3 per prop) --
+        cmds.text(label="Color", align="left")
+        cmds.rowLayout(
+            numberOfColumns=3,
+            columnWidth3=(130, 130, 130),
+            columnAlign3=("center", "center", "center")
         )
-        color_buttons[mat_key] = btn
+
+        presets = prop["color_presets"]
+        if color_key not in preset_buttons:
+            preset_buttons[color_key] = []
+
+        for i, preset in enumerate(presets):
+            color = preset["color"]
+            label = preset["label"]
+
+            def make_color_cmd(key, selected_color, idx):
+                """Return a callback that sets the active color for a prop.
+
+                Highlights the selected button and dims the other two
+                by updating their labels with asterisks.
+
+                Args:
+                    key (str): The color_key this preset belongs to.
+                    selected_color (list): The RGB color to activate.
+                    idx (int): Index of this button in preset_buttons[key].
+
+                Returns:
+                    function: A Maya command callback.
+                """
+                def set_color(*args):
+                    material_colors[key][0] = selected_color[0]
+                    material_colors[key][1] = selected_color[1]
+                    material_colors[key][2] = selected_color[2]
+                    for j, btn in enumerate(preset_buttons[key]):
+                        if j == idx:
+                            cmds.button(btn, edit=True, label=f"* {presets[j]['label']} *")
+                        else:
+                            cmds.button(btn, edit=True, label=presets[j]["label"])
+                return set_color
+
+            btn_label = f"* {label} *" if i == 0 else label
+
+            btn = cmds.button(
+                label=btn_label,
+                height=28,
+                backgroundColor=(color[0], color[1], color[2]),
+                command=make_color_cmd(color_key, color, i)
+            )
+            preset_buttons[color_key].append(btn)
+
         cmds.setParent("..")
 
     # ---- Build button ----
@@ -390,7 +411,7 @@ def launch_ui():
 
     cmds.button(
         label="BUILD GYM PROPS",
-        height=40,
+        height=44,
         backgroundColor=(0.2, 0.6, 0.2),
         command=on_build
     )
