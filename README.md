@@ -1,45 +1,43 @@
 # Gym Prop Kit Generator
+**DIGM 131 - Week 6 | Author: Christian Wurapa**
 
-## What It Does
-A Maya tool that generates gym equipment props from parameters.
-Artists and TDs can create dumbbells, barbells, benches, and squat 
-racks by calling functions with customizable dimensions. The tool 
-builds each prop automatically from simple geometry.
+A Maya Python tool that procedurally generates gym equipment props
+(dumbbell, barbell, bench, squat rack) with a JSON-driven UI for
+customizing dimensions and materials.
 
-## Who Would Use It
-3D artists building gym environments, game-ready prop libraries,
-or cinematic scenes who want consistent, parametric equipment.
+---
 
-## Planned Features
-- [x] Core prop functions (Week 6)
-- [ ] Data-driven configuration (Week 7)
-- [ ] Error handling + debug mode (Week 8)
-- [ ] Maya UI window + JSON save/load (Week 9)
-- [ ] Polish + documentation (Week 10)
+## File Structure
 
-## Project Structure
+```
 gym_prop_kit/
-    prop_utils.py       # All prop creation functions
-    material_utils.py   # Materials and colors
-    main.py             # Entry point + self-test
-    README.md           # This file
+├── main.py           # Entry point — run this in Maya
+├── prop_utils.py     # Geometry builder functions
+├── material_utils.py # Lambert shader creation and assignment
+├── ui.py             # JSON-driven UI window and build logic
+└── README.md         # This file
+```
+## How to Run
 
-## Functions I Need to Write
+1. Save all four `.py` files to the **same folder** on disk
+2. Open Maya and go to **Windows → General Editors → Script Editor**
+3. Create a new **Python** tab
+4. Paste the contents of `main.py` and press **Ctrl+Enter**
 
-### prop_utils.py
-- `create_dumbbell(handle_length, head_radius, position)` — handle cylinder + 2 sphere heads
-- `create_barbell(bar_length, plate_count, plate_radius, position)` — long bar + stacked plates each side
-- `create_bench(seat_width, seat_length, leg_height, position)` — seat box + 4 legs
-- `create_squat_rack(height, width, position)` — 2 vertical poles + horizontal bar holders
+The UI window will open. Adjust sliders, pick colors, and click
+*BUILD GYM PROPS* to generate the scene.
 
-### Shared / Helper Functions
-- `create_cylinder(radius, height, name)` — reused by multiple props
-- `create_leg(height, position)` — reused by bench and squat rack
+## How to Add a New Prop
 
-### material_utils.py
-- `create_material(name, color)` — Lambert shader with RGB color
-- `assign_material(obj_name, shader_name)` — apply shader to object
+1. Open `ui.py`
+2. Add a new entry to the `"props"` array in `CONFIG_JSON`
+3. Add the builder function to `PROP_BUILDERS` in `ui.py`
+4. Write the builder function in `prop_utils.py`
 
-### main.py
-- Imports prop_utils and material_utils
-- Self-test that builds one of each prop in the viewport
+No other files need to change.
+
+## Dependencies
+
+- Autodesk Maya 2022 or later
+- Python 3 (bundled with Maya)
+- No external packages required
